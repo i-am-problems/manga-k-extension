@@ -31,12 +31,12 @@ import {
     parseMangaDetails,
     parsePopular,
     parseSearch
-} from './MangakParser'
+} from './MangaKParser'
 
-export const MangakInfo: SourceInfo = {
+export const MangaKInfo: SourceInfo = {
     version: '1.0.0',
     name: 'MangaK',
-    icon: 'icon.png',
+    icon: 'icon.svg',
     author: 'Problems',
     authorWebsite: '',
     description: 'Extension that pulls manga from mangak.io',
@@ -51,7 +51,7 @@ export const MangakInfo: SourceInfo = {
         | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
 }
 
-export class Mangak implements SearchResultsProviding, MangaProviding, ChapterProviding, HomePageSectionsProviding {
+export class MangaK implements SearchResultsProviding, MangaProviding, ChapterProviding, HomePageSectionsProviding {
 
     requestManager = App.createRequestManager({
         requestsPerSecond: 5,
