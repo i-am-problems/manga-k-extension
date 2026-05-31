@@ -735,11 +735,11 @@ var _Sources = (() => {
     }
   });
 
-  // src/Mangak/Mangak.ts
-  var Mangak_exports = {};
-  __export(Mangak_exports, {
-    Mangak: () => Mangak,
-    MangakInfo: () => MangakInfo
+  // src/MangaK/MangaK.ts
+  var MangaK_exports = {};
+  __export(MangaK_exports, {
+    MangaK: () => MangaK,
+    MangaKInfo: () => MangaKInfo
   });
   var import_types3 = __toESM(require_lib());
 
@@ -15414,7 +15414,7 @@ var _Sources = (() => {
   var parse5 = getParse((content, options, isDocument2, context) => options._useHtmlParser2 ? parseDocument(content, options) : parseWithParse5(content, options, isDocument2, context));
   var load = getLoad(parse5, (dom, options) => options._useHtmlParser2 ? esm_default(dom, options) : renderWithParse5(dom));
 
-  // src/Mangak/MangakParser.ts
+  // src/MangaK/MangaKParser.ts
   var import_types2 = __toESM(require_lib());
 
   // node_modules/html-entities/dist/esm/named-references.js
@@ -15576,7 +15576,7 @@ var _Sources = (() => {
     });
   }
 
-  // src/Mangak/MangakParser.ts
+  // src/MangaK/MangaKParser.ts
   var MK_DOMAIN = "https://mangak.io";
   var MK_API_DOMAIN = "https://api.mangak.io";
   var extractNextData = ($2) => {
@@ -15742,11 +15742,11 @@ var _Sources = (() => {
     sectionCallback(latestSection);
   };
 
-  // src/Mangak/Mangak.ts
-  var MangakInfo = {
+  // src/MangaK/MangaK.ts
+  var MangaKInfo = {
     version: "1.0.0",
     name: "MangaK",
-    icon: "icon.png",
+    icon: "icon.svg",
     author: "Problems",
     authorWebsite: "",
     description: "Extension that pulls manga from mangak.io",
@@ -15757,7 +15757,7 @@ var _Sources = (() => {
     ],
     intents: import_types3.SourceIntents.MANGA_CHAPTERS | import_types3.SourceIntents.HOMEPAGE_SECTIONS | import_types3.SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
   };
-  var Mangak = class {
+  var MangaK = class {
     constructor() {
       this.requestManager = App.createRequestManager({
         requestsPerSecond: 5,
@@ -15877,6 +15877,6 @@ var _Sources = (() => {
       return load(response.data);
     }
   };
-  return __toCommonJS(Mangak_exports);
+  return __toCommonJS(MangaK_exports);
 })();
 this.Sources = _Sources; if (typeof exports === 'object' && typeof module !== 'undefined') {module.exports.Sources = this.Sources;}
