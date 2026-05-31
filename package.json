@@ -1,0 +1,23 @@
+{
+  "name": "manga-k-extension",
+  "version": "0.0.1",
+  "repositoryName": "MangaK (0.8)",
+  "description": "Paperback 0.8 extension for mangak.io",
+  "scripts": {
+    "bundle": "npx paperback bundle",
+    "serve": "npx paperback serve",
+    "test": "npx paperback test"
+  },
+  "author": "Problems",
+  "license": "GPL-3.0-or-later",
+  "devDependencies": {
+    "@tsconfig/recommended": "^1.0.7",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@paperback/toolchain": "^0.8.7",
+    "@paperback/types": "^0.8.7",
+    "cheerio": "^1.0.0",
+    "html-entities": "^2.5.2"
+  }
+}
