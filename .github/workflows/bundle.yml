@@ -22,6 +22,11 @@ jobs:
       - run: npm ci
       - run: npm run bundle
 
+      - name: Apply Midnight theme to landing page
+        run: |
+          rm -f bundles/index.html
+          cp -r pages-overlay/. bundles/
+
       - name: Deploy to gh-pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
