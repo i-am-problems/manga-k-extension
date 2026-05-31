@@ -1,5 +1,4 @@
 import {
-    BadgeColor,
     Chapter,
     ChapterDetails,
     ChapterProviding,
@@ -8,8 +7,8 @@ import {
     HomeSection,
     MangaProviding,
     PagedResults,
-    PartialSourceManga,
     Request,
+    RequestManager,
     Response,
     SearchRequest,
     SearchResultsProviding,
@@ -18,174 +17,169 @@ import {
     SourceManga
 } from '@paperback/types'
 
-import * as cheerio from 'cheerio'
-
 import {
-    MK_API_DOMAIN,
-    MK_DOMAIN,
-    parseChapterPages,
-    parseChapters,
-    parseHomeSections,
-    parseInternalMangaId,
-    parseLatest,
+    API_DOMAIN_URL,
+    API_URL,
+    BASE_URL,
+    buildHomeSections,
+    buildSearchUrl,
+    ChapterResponse,
+    ChaptersListResponse,
+    HomeResponse,
+    LatestResponse,
+    MangaResponse,
+    parseApiChapters,
+    parseInlineChapters,
+    parseLatestItems,
     parseMangaDetails,
-    parsePopular,
-    parseSearch
+    parseSearch,
+    parseTrending,
+    TrendingResponse
 } from './MangaKParser'
 
 export const MangaKInfo: SourceInfo = {
-    version: '1.0.0',
+    version: '2.0.0',
     name: 'MangaK',
     icon: 'icon.svg',
     author: 'Problems',
-    authorWebsite: '',
     description: 'Extension that pulls manga from mangak.io',
     contentRating: ContentRating.MATURE,
-    websiteBaseURL: MK_DOMAIN,
-    sourceTags: [
-        { text: 'Cloudflare', type: BadgeColor.YELLOW }
-    ],
-    intents:
-        SourceIntents.MANGA_CHAPTERS
-        | SourceIntents.HOMEPAGE_SECTIONS
-        | SourceIntents.CLOUDFLARE_BYPASS_REQUIRED
+    websiteBaseURL: BASE_URL,
+    sourceTags: [],
+    intents: SourceIntents.MANGA_CHAPTERS | SourceIntents.HOMEPAGE_SECTIONS
 }
 
 export class MangaK implements SearchResultsProviding, MangaProviding, ChapterProviding, HomePageSectionsProviding {
-
-    requestManager = App.createRequestManager({
+    requestManager: RequestManager = App.createRequestManager({
         requestsPerSecond: 5,
         requestTimeout: 15000,
         interceptor: {
             interceptRequest: async (request: Request): Promise<Request> => {
                 request.headers = {
                     ...(request.headers ?? {}),
-                    ...{
-                        'Referer': `${MK_DOMAIN}/`,
-                        'Origin': MK_DOMAIN,
-                        'User-Agent': await this.requestManager.getDefaultUserAgent()
-                    }
+                    referer: `${BASE_URL}/`
                 }
                 return request
             },
             interceptResponse: async (response: Response): Promise<Response> => response
         }
-    });
+    })
+
+    private sections = buildHomeSections()
+
+    async fetchBuildId(): Promise<string> {
+        const res = await this.requestManager.schedule(
+            App.createRequest({ url: `${API_URL}/version`, method: 'GET' }),
+            1
+        )
+        const data = JSON.parse(res.data ?? '{}') as { buildId?: string }
+        if (!data.buildId) throw new Error('Failed to fetch buildId from /api/version')
+        return data.buildId
+    }
+
+    async fetchNextData<T>(route: string): Promise<T> {
+        const buildId = await this.fetchBuildId()
+        const res = await this.requestManager.schedule(
+            App.createRequest({
+                url: `${BASE_URL}/_next/data/${buildId}/${route}`,
+                method: 'GET',
+                headers: { origin: BASE_URL, referer: `${BASE_URL}/` }
+            }),
+            1
+        )
+        return JSON.parse(res.data ?? '{}') as T
+    }
 
     getMangaShareUrl(mangaId: string): string {
-        return `${MK_DOMAIN}/${mangaId}`
+        return `${BASE_URL}/${mangaId}`
+    }
+
+    async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
+        for (const s of Object.values(this.sections)) sectionCallback(s.section)
+
+        const data = await this.fetchNextData<HomeResponse>('home.json')
+        for (const s of Object.values(this.sections)) {
+            s.section.items = s.extract(data.pageProps)
+            sectionCallback(s.section)
+        }
+    }
+
+    async getViewMoreItems(homepageSectionId: string, _metadata: unknown): Promise<PagedResults> {
+        switch (homepageSectionId) {
+            case 'latest': {
+                const data = await this.fetchNextData<LatestResponse>('latest.json')
+                return App.createPagedResults({
+                    results: parseLatestItems(data.pageProps.items),
+                    metadata: undefined
+                })
+            }
+            case 'trending': {
+                const data = await this.fetchNextData<TrendingResponse>('top/day.json?type=day')
+                return App.createPagedResults({
+                    results: parseTrending({
+                        heroItems: [],
+                        popularItems: [],
+                        latest: { items: [] },
+                        trendingItems: data.pageProps.initialItems
+                    }),
+                    metadata: undefined
+                })
+            }
+            default:
+                return App.createPagedResults({ results: [], metadata: undefined })
+        }
     }
 
     async getMangaDetails(mangaId: string): Promise<SourceManga> {
-        const $ = await this.fetchCheerio(`${MK_DOMAIN}/${mangaId}`)
-        return parseMangaDetails($, mangaId)
+        const data = await this.fetchNextData<MangaResponse>(`${mangaId}.json`)
+        return parseMangaDetails(data.pageProps.initialManga, mangaId)
     }
 
     async getChapters(mangaId: string): Promise<Chapter[]> {
-        const $ = await this.fetchCheerio(`${MK_DOMAIN}/${mangaId}`)
-        const internalId = parseInternalMangaId($)
+        const data = await this.fetchNextData<MangaResponse>(`${mangaId}.json`)
+        const manga = data.pageProps.initialManga
+        const inline = manga.chapters ?? []
 
-        const request = App.createRequest({
-            url: `${MK_API_DOMAIN}/titles/${internalId}/chapters`,
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-        })
+        if (inline.length < 50) return parseInlineChapters(inline)
 
-        const response = await this.requestManager.schedule(request, 1)
-        let data
-        try {
-            data = JSON.parse(response.data as string)
-        } catch (e) {
-            throw new Error(`Failed to parse chapters JSON for mangaId ${mangaId}: ${e}`)
-        }
-
-        return parseChapters(data, mangaId)
+        const res = await this.requestManager.schedule(
+            App.createRequest({
+                url: `${API_DOMAIN_URL}/titles/${manga.id}/chapters`,
+                method: 'GET'
+            }),
+            1
+        )
+        const list = JSON.parse(res.data ?? '{}') as ChaptersListResponse
+        return parseApiChapters(list)
     }
 
     async getChapterDetails(mangaId: string, chapterId: string): Promise<ChapterDetails> {
-        const $ = await this.fetchCheerio(`${MK_DOMAIN}/${mangaId}/${chapterId}`)
-        const pages = parseChapterPages($)
+        const data = await this.fetchNextData<ChapterResponse>(`${mangaId}/${chapterId}.json`)
         return App.createChapterDetails({
             id: chapterId,
             mangaId,
-            pages
+            pages: data.pageProps.initialChapter.images
         })
     }
 
     async getSearchResults(query: SearchRequest, metadata: unknown): Promise<PagedResults> {
         const page = (metadata as { page?: number } | undefined)?.page ?? 1
-        const title = encodeURIComponent(query?.title ?? '')
+        const url = buildSearchUrl(query?.title, page)
 
-        const request = App.createRequest({
-            url: `${MK_API_DOMAIN}/titles/search?q=${title}&page=${page}&limit=24`,
-            method: 'GET',
-            headers: { 'Accept': 'application/json' }
-        })
-
-        const response = await this.requestManager.schedule(request, 1)
-        let data
-        try {
-            data = JSON.parse(response.data as string)
-        } catch (e) {
-            throw new Error(`Failed to parse search JSON: ${e}`)
-        }
-
+        const res = await this.requestManager.schedule(
+            App.createRequest({
+                url,
+                method: 'GET',
+                headers: { origin: BASE_URL, referer: `${BASE_URL}/search` }
+            }),
+            1
+        )
+        const data = JSON.parse(res.data ?? '{}')
         const { results, hasNext } = parseSearch(data)
+
         return App.createPagedResults({
             results,
             metadata: hasNext ? { page: page + 1 } : undefined
         })
-    }
-
-    async getHomePageSections(sectionCallback: (section: HomeSection) => void): Promise<void> {
-        const [popular, latest] = await Promise.all([
-            this.fetchPopular(),
-            this.fetchLatest(1)
-        ])
-        parseHomeSections(popular, latest.results, sectionCallback)
-    }
-
-    async getViewMoreItems(homepageSectionId: string, metadata: unknown): Promise<PagedResults> {
-        const page = (metadata as { page?: number } | undefined)?.page ?? 1
-
-        if (homepageSectionId === 'updated_section') {
-            const { results, hasNext } = await this.fetchLatest(page)
-            return App.createPagedResults({
-                results,
-                metadata: hasNext ? { page: page + 1 } : undefined
-            })
-        }
-
-        return App.createPagedResults({ results: [], metadata: undefined })
-    }
-
-    async getCloudflareBypassRequestAsync(): Promise<Request> {
-        return App.createRequest({
-            url: `${MK_DOMAIN}/`,
-            method: 'GET',
-            headers: {
-                'Referer': `${MK_DOMAIN}/`,
-                'User-Agent': await this.requestManager.getDefaultUserAgent()
-            }
-        })
-    }
-
-    private async fetchPopular(): Promise<PartialSourceManga[]> {
-        const $ = await this.fetchCheerio(`${MK_DOMAIN}/top/day`)
-        return parsePopular($)
-    }
-
-    private async fetchLatest(page: number): Promise<{ results: PartialSourceManga[]; hasNext: boolean }> {
-        const $ = await this.fetchCheerio(`${MK_DOMAIN}/latest?sort=latest&page=${page}`)
-        return parseLatest($)
-    }
-
-    private async fetchCheerio(url: string): Promise<cheerio.CheerioAPI> {
-        const request = App.createRequest({ url, method: 'GET' })
-        const response = await this.requestManager.schedule(request, 1)
-        if (response.status === 503 || response.status === 403) {
-            throw new Error(`Cloudflare challenge encountered for ${url}`)
-        }
-        return cheerio.load(response.data as string)
     }
 }
